@@ -254,15 +254,25 @@ $ AWS_PROFILE=xxxxx AWS_REGION=ap-northeast-1 bundle exec eryastic domain --upda
 eryastic で作成、削除、更新したリソースについて、awspec で確認することが出来る.
 
 ```sh
-
+$ AWS_PROFILE=xxxxx AWS_REGION=ap-northeast-1 bundle exec rake -T
+...
+rake spec             # Run RSpec code examples
+rake spec:delete      # delete のテストを実行する
+rake spec:deploy      # deploy のテストを実行する
 ```
 
-以下の実行例のように `spec:xxxx` は awspec での確認となり、`check:xxxx` がスクリプトでの確認となる.
+ドメインを削除した際には、以下のように `spec:delete` を実行して削除されたことを確認する.
 
 ```sh
-```
+$ AWS_PROFILE=xxxxx AWS_REGION=ap-northeast-1 bundle exec rake spec:delete
+...
 
-尚、将来的には `check:xxxx` は廃止して、`spec:xxxx` に統一する予定.
+elasticsearch 'oreno-es1'
+  should not exist
+
+Finished in 0.78548 seconds (files took 1.91 seconds to load)
+1 example, 0 failures
+```
 
 ## TODO
 
