@@ -46,5 +46,55 @@ module Eryastic
         exit 1
       end
     end
+
+    def delete_spec_generate(domain_name)
+      template = <<-'EOF'
+describe elasticsearch("<%= domain_name %>") do
+  it { should_not exist }
+end
+EOF
+      File.open("./spec/" + "delete_spec.rb", "w") do |file|
+        file.puts "require 'spec_helper'"
+        file.puts ERB.new(template, nil, "-").result(binding).gsub(/^\n/, "")
+      end
+    end
+
+    def create_spec_generate(config)
+      template = <<-'EOF'
+describe elasticsearch("<%= config[:domain_name].to_s %>") do
+  it { should exist }
+<% config.each do |key, value| %>
+<% if key == 'access_policies'.to_sym %>
+  it do
+    should have_access_policies <<-policy
+<%= JSON.pretty_generate(JSON.load(value)) %>
+  policy
+  end
+<% end %>
+<% if value.kind_of?(Hash) %>
+<% value.each do |k, v| %>
+<% if k == 'instance_type'.to_sym or k == 'volume_type'.to_sym %>
+  its("<%= key.to_s + '.' + k.to_s %>") { should eq "<%= v %>" }
+<% else %>
+  its("<%= key.to_s + '.' + k.to_s %>") { should eq <%= v %> }
+<% end %>
+<% end %>
+<% else %>
+<% if key != 'access_policies'.to_sym %>
+<% if key == 'domain_name'.to_sym or key == 'elasticsearch_version'.to_sym %>
+  its("<%= key.to_sym %>") { should eq "<%= value %>" }
+<% else %>
+  its("<%= key.to_sym %>") { should eq <%= value %> }
+<% end %>
+<% end %>
+<% end %>
+<% end %>
+end
+EOF
+      File.open("./spec/" + "deploy_spec.rb", "w") do |file|
+        file.puts "require 'spec_helper'"
+        file.puts ERB.new(template, nil, "-").result(binding).gsub(/^\n/, "")
+      end
+    end
   end
 end

@@ -28,6 +28,7 @@ module Eryastic
       else
         exit 0
       end
+      create_spec_generate(config)
     end
 
     def delete_domain(domain_name = nil)
@@ -58,6 +59,7 @@ module Eryastic
       else
         exit 0
       end
+      delete_spec_generate(domain_name)
     end
 
     def export_domain(domain_name = nil, config_file = nil)
@@ -123,7 +125,7 @@ module Eryastic
       else
         exit 0
       end
+      create_spec_generate(update_config)
     end
-
   end
 end
