@@ -278,7 +278,7 @@ Finished in 0.78548 seconds (files took 1.91 seconds to load)
 
 - advanced_options を toml で指定出来るようにする
 - snapshot メニューの追加
-- 構成確認処理の追加
+- ~~構成確認処理の追加~~
 - テストの追加
 
 ## Development
