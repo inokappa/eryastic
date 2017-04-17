@@ -140,6 +140,11 @@ iops = <%= config[:ebs_options][:iops] %>
 
 [snapshot_options]
 automated_snapshot_start_hour = <%= config[:snapshot_options][:automated_snapshot_start_hour] %>
+
+[advanced_options]
+<% config[:advanced_options].each do |key, value| -%>
+<%= key %> = <%= value %>
+<% end %>
 EOF
       puts ERB.new(template, nil, "-").result(binding)
       if config_file
