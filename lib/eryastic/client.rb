@@ -132,9 +132,9 @@ dedicated_master_count = <%= config[:elasticsearch_cluster_config][:dedicated_ma
 
 [ebs_options]
 ebs_enabled = <%= config[:ebs_options][:ebs_enabled] %>
+<% if config[:ebs_options][:ebs_enabled] -%>
 volume_type = "<%= config[:ebs_options][:volume_type] %>"
 volume_size = <%= config[:ebs_options][:volume_size] %>
-<% if config[:ebs_options][:iops] -%>
 iops = <%= config[:ebs_options][:iops] %>
 <% end %>
 
