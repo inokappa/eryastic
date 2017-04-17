@@ -135,8 +135,6 @@ ebs_enabled = <%= config[:ebs_options][:ebs_enabled] %>
 <% if config[:ebs_options][:ebs_enabled] -%>
 volume_type = "<%= config[:ebs_options][:volume_type] %>"
 volume_size = <%= config[:ebs_options][:volume_size] %>
-<% end %>
-<% if config[:ebs_options][:iops] -%>
 iops = <%= config[:ebs_options][:iops] %>
 <% end %>
 
