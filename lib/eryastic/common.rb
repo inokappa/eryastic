@@ -60,23 +60,24 @@ EOF
     end
 
     def create_spec_generate(config)
+      p config
       template = <<-'EOF'
 describe elasticsearch("<%= config[:domain_name].to_s %>") do
   it { should exist }
 <% config.each do |key, value| %>
 <% if key == 'access_policies'.to_sym %>
+<% if value != "" %>
   it do
     should have_access_policies <<-policy
 <%= JSON.pretty_generate(JSON.load(value)) %>
   policy
   end
 <% end %>
+<% end %>
 <% if value.kind_of?(Hash) %>
 <% value.each do |k, v| %>
 <% if k == 'instance_type'.to_sym or k == 'volume_type'.to_sym %>
   its("<%= key.to_s + '.' + k.to_s %>") { should eq "<%= v %>" }
-<% else %>
-  its("<%= key.to_s + '.' + k.to_s %>") { should eq <%= v %> }
 <% end %>
 <% end %>
 <% else %>

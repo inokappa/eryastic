@@ -1,87 +1,346 @@
-#!/usr/bin/env ruby
-# -*- coding: utf-8 -*-
+require 'faraday_middleware'
+require 'faraday_middleware/aws_signers_v4'
 
-require 'json'
-require 'net/http'
-require 'uri'
+module Eryastic
+  class Snapshot < Client
 
-def http_output(response)
-  puts "code => #{response.code}"
-  puts "msg  => #{response.message}"
-  puts "body => #{response.body}"
-end
+    include Eryastic::Helper
 
-def post_request(uri, body)
-  uri  = URI.parse(uri)
-  http = Net::HTTP.new(uri.host, uri.port)
-  http.use_ssl = true
-  req  = Net::HTTP::Post.new(uri.request_uri)
-  req["Content-Type"] = "application/json"
-  req.body = body
-  http.request(req)
-end
+    def prepare_snapshot(domain_name, repository_name, bucket_name)
+      if s3_bucket_not_exists?(bucket_name)
+        create_s3_bucket_action(bucket_name)
+        log.info('S3 Bucket ' + bucket_name + ' を作成しました.')
+      else
+        log.warn('S3 Bucket は存在しています.')
+      end
 
-def put_request(uri)
-  uri  = URI.parse(uri)
-  http = Net::HTTP.new(uri.host, uri.port)
-  http.use_ssl = true
-  req  = Net::HTTP::Put.new(uri.request_uri)
-  http.request(req)
-end
+      iam_role_name = repository_name + '-role'
+      iam_policy_name = repository_name + '-policy'
+      if iam_role_not_exists?(iam_role_name)
+        iam_res = create_iam_role_action(iam_role_name)
+        create_iam_policy_action(iam_res.role.role_name, iam_policy_name, bucket_name)
+        log.info('IAM Role ' + iam_role_name + ' 及び' + iam_policy_name + ' を作成しました.')
+      else
+        log.warn('IAM Role は存在しています.')
+        iam_res = iam_role_get(iam_role_name)
+      end
 
-def get_request(uri)
-  uri  = URI.parse(uri)
-  http = Net::HTTP.new(uri.host, uri.port)
-  http.use_ssl = true
-  req  = Net::HTTP::Get.new(uri.request_uri)
-  http.request(req)
-end
+      ess_endpoint = get_domain_endpoint_action(domain_name)
 
-def read_tfstate
-  json_data = open('/tmp/terraform/terraform.tfstate') do |io|
-    JSON.load(io)
-  end
-  output = json_data['modules'][0]['outputs']
-  return output
-end
+      log.info('以下の内容でスナップショット取得先 S3 バケット、IAM Role を作成します.')
+      header = [ 'ess_endpoint', 'repository_name', 'iam_role_name', 'bucket_name' ]
+      resource_rows = [[ ess_endpoint, repository_name, iam_res.role.role_name, bucket_name ]]
+      puts display_resources(header, resource_rows)
 
-def regist_snapshot_dir
-  state = read_tfstate
-  template = <<EOS
+      if process_ok?
+        begin
+          regist_snapshot_dir(ess_endpoint, repository_name, iam_res.role.arn, bucket_name)
+        rescue StandardError => e
+          log.error(e)
+          exit 1
+        end
+      else
+        exit 0
+      end
+    end
+
+    def create_snapshot(domain_name, repository_name, snapshot_name)
+      ess_endpoint = get_domain_endpoint_action(domain_name)
+      snapshot_name = snapshot_name + '_' + "#{Time.now.to_i}"
+      uri  = 'https://' + ess_endpoint + '/_snapshot/' + repository_name + '/' + snapshot_name
+
+      log.info('以下の内容でスナップショットを作成します.')
+      header = [ 'ess_endpoint', 'repository_name', 'snapshot_name' ]
+      resource_rows = [[ ess_endpoint, repository_name, snapshot_name ]]
+      puts display_resources(header, resource_rows)
+
+      if process_ok?
+        begin
+          res = put_request(uri)
+        rescue StandardError => e
+          log.error(e)
+          exit 1
+        end
+      else
+        exit 0
+      end
+
+      if res.code == '200'
+        log.info('スナップショットを作成しました. message = ' + res.body + ', snapshot_name = ' + snapshot_name)
+        exit 0
+      else
+        log.error('スナップショットの取得に失敗しました. message = ' + res.body)
+        exit 1
+      end
+
+      # For debug
+      # http_output(res)
+    end
+
+    def list_snapshot(domain_name, repository_name)
+      ess_endpoint = get_domain_endpoint_action(domain_name)
+      uri  = 'https://' + ess_endpoint + '/_snapshot/' + repository_name + '/_all?pretty'
+      res = get_request(uri)
+      puts display_snapshots(res.body)
+    end
+
+    def list_repository(domain_name)
+      ess_endpoint = get_domain_endpoint_action(domain_name)
+      uri  = 'https://' + ess_endpoint + '/_cat/repositories'
+      res = get_request(uri)
+      puts display_repositories(res.body.split(" \n"))
+    end
+
+    def delete_snapshot(domain_name, repository_name, snapshot_name)
+      ess_endpoint = get_domain_endpoint_action(domain_name)
+      uri  = 'https://' + ess_endpoint + '/_snapshot/' + repository_name + '/' + snapshot_name
+
+      log.info('以下の内容でスナップショットを削除します.')
+      header = [ 'ess_endpoint', 'repository_name', 'snapshot_name' ]
+      resource_rows = [[ ess_endpoint, repository_name, snapshot_name ]]
+      puts display_resources(header, resource_rows)
+
+      if process_ok?
+        begin
+          res = delete_request(uri)
+        rescue StandardError => e
+          log.error(e)
+          exit 1
+        end
+      else
+        exit 0
+      end
+
+      if res.code == '200'
+        log.info('スナップショットを削除しました. message = ' + res.body + ', snapshot_name = ' + snapshot_name)
+        exit 0
+      else
+        log.error('スナップショットの削除に失敗しました. message = ' + res.body)
+        exit 1
+      end
+    end
+
+    def restore_snapshot(domain_name, repository_name, snapshot_name)
+      ess_endpoint = get_domain_endpoint_action(domain_name)
+      uri  = 'https://' + ess_endpoint + '/_snapshot/' + repository_name + '/' + snapshot_name + '/_restore'
+
+      log.info('以下の内容でレストアを行います.')
+      header = [ 'ess_endpoint', 'repository_name', 'snapshot_name' ]
+      resource_rows = [[ ess_endpoint, repository_name, snapshot_name ]]
+      puts display_resources(header, resource_rows)
+
+      if process_ok?
+        begin
+          res = post_request(uri)
+        rescue StandardError => e
+          log.error(e)
+          exit 1
+        end
+      else
+        exit 0
+      end
+
+      if res.code == '200'
+        log.info('スナップショットからのレストアを開始しました. message = ' + res.body + ', snapshot_name = ' + snapshot_name)
+        exit 0
+      else
+        log.error('スナップショットからのレストアに失敗しました. message = ' + res.body)
+        exit 1
+      end
+    end
+
+    private
+
+    def s3_bucket_not_exists?(bucket_name)
+      res = s3_client.list_buckets
+      bucket_names = res.buckets.select { |bucket| bucket.name == bucket_name }
+      if bucket_names.empty?
+        true
+      else
+        false
+      end
+    end
+
+    def create_s3_bucket_action(bucket_name)
+      begin
+        res = s3_client.create_bucket({
+          bucket: bucket_name
+        })
+        res
+      rescue StandardError => e
+        log.error('処理が失敗しました.' + e.to_s)
+      end
+    end
+
+    def iam_role_not_exists?(role_name)
+      res = iam_client.list_roles({ path_prefix: '/service-role/' })
+      role_names = res.roles.select { |role| role.role_name == role_name }
+      if role_names.empty?
+        true
+      else
+        false
+      end
+    end
+
+    def iam_role_get(role_name)
+      begin
+        res = iam_client.get_role({ role_name: role_name })
+        res
+      rescue StandardError => e
+        log.error('処理が失敗しました.' + e.to_s)
+        exit 0
+      end
+    end
+
+    def create_iam_role_action(role_name)
+      policy_document = <<-"EOF"
 {
-  "settings": {
-    "role_arn": "#{state['IAM Role']}",
-    "region": "ap-northeast-1",
-    "bucket": "#{state['S3 bucket']}"
-  },
-  "type": "s3"
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "es.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
 }
-EOS
-  uri  = "https://" + ENV["ES_HOST"] + "/_snapshot/" + ENV["ES_SNAPSHOT"]
-  res = post_request(uri, template)
+EOF
+      begin
+        res = iam_client.create_role({
+          path: '/service-role/',
+          role_name: role_name,
+          assume_role_policy_document: policy_document
+        })
+        res
+      rescue StandardError => e
+        log.error('処理が失敗しました.' + e.to_s)
+      end
+    end
 
-  http_output(res)
-end
+    def create_iam_policy_action(role_name, policy_name, bucket_name)
+      policy_document = <<-"EOF"
+{
+  "Version": "2012-10-17",
+  "Statement":[
+    {
+      "Action":[
+        "s3:ListBucket"
+      ],
+      "Effect":"Allow",
+      "Resource":[
+        "arn:aws:s3:::#{bucket_name}"
+      ]
+    },
+    {
+      "Action":[
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "iam:PassRole"
+      ],
+      "Effect":"Allow",
+      "Resource":[
+          "arn:aws:s3:::#{bucket_name}/*"
+      ]
+    }
+  ]
+}
+EOF
+      begin
+        res = iam_client.put_role_policy({
+          role_name: role_name,
+          policy_name: policy_name,
+          policy_document: policy_document
+        })
+        res
+      rescue StandardError => e
+        log.error('処理が失敗しました.' + e.to_s)
+      end
+    end
 
-def create_snapshot
-  uri  = "https://" + ENV["ES_HOST"] + "/_snapshot/" + ENV["ES_SNAPSHOT"] + "/" +ENV["ES_SNAPSHOT_NAME_PREFIX"] + "_" + "#{Time.now.to_i}"
-  res = put_request(uri)
+    def http_output(response)
+      puts "code => #{response.code}"
+      puts "msg  => #{response.message}"
+      puts "body => #{response.body}"
+    end
 
-  http_output(res)
-end
+    def post_request(uri)
+      uri  = URI.parse(uri)
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = true
+      req  = Net::HTTP::Post.new(uri.request_uri)
+      http.request(req)
+    end
 
-def list_snapshot
-  uri  = "https://" + ENV["ES_HOST"] + "/_snapshot/" + ENV["ES_SNAPSHOT"] + "/_all?pretty"
-  res = get_request(uri)
+    def put_request(uri)
+      uri  = URI.parse(uri)
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = true
+      req  = Net::HTTP::Put.new(uri.request_uri)
+      http.request(req)
+    end
 
-  http_output(res)
-end
+    def get_request(uri)
+      uri  = URI.parse(uri)
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = true
+      req  = Net::HTTP::Get.new(uri.request_uri)
+      http.request(req)
+    end
 
-case ARGV[0]
-when "regist" then
-  regist_snapshot_dir
-when "create" then
-  create_snapshot
-when "list" then
-  list_snapshot
+    def delete_request(uri)
+      uri  = URI.parse(uri)
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = true
+      req  = Net::HTTP::Delete.new(uri.request_uri)
+      http.request(req)
+    end
+
+    def read_tfstate
+      json_data = open('/tmp/terraform/terraform.tfstate') do |io|
+        JSON.load(io)
+      end
+      output = json_data['modules'][0]['outputs']
+      return output
+    end
+
+    def regist_snapshot_dir(ess_endpoint, snapshot_name, iam_role_arn, s3_bucket_name)
+      template = <<-"EOT"
+{
+"settings": {
+  "role_arn": "#{iam_role_arn}",
+  "region": "ap-northeast-1",
+  "bucket": "#{s3_bucket_name}"
+},
+"type": "s3"
+}
+EOT
+      uri  = "https://" + ess_endpoint
+      conn = Faraday.new(url: uri) do |faraday|
+        faraday.request :aws_signers_v4,
+          credentials: Aws::SharedCredentials.new(profile_name: ENV['AWS_PROFILE']),
+          service_name: 'es',
+          region: ENV['AWS_REGION']
+
+        faraday.adapter Faraday.default_adapter
+      end
+
+      res = conn.post do |req|
+        req.headers['Content-Type'] = 'application/json'
+        req.url "/_snapshot/" + snapshot_name
+        req.body = template
+      end
+
+      if res.status == 200
+        log.info('スナップショットレジストリを登録しました. message = ' + res.body)
+        exit 0
+      else
+        log.error('スナップショットレジストリの登録に失敗しました. message = ' + res.body)
+        exit 1
+      end
+    end
+  end
 end

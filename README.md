@@ -17,6 +17,36 @@ bundle install --path vendor/bundle
 
 ## Usage
 
+### 事前に
+
+Eryastic を実行する環境には Amazon Elasticsearch Service を操作出来る権限を付与すること.
+例えば、IP アドレスを Amazon Elasticsearch Service のアクセスポリシーを利用する場合には、以下のように設定する.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "*"
+      },
+      "Action": "es:*",
+      "Resource": "arn:aws:es:ap-northeast-1:123456789012:domain/demo-es1/*",
+      "Condition": {
+        "IpAddress": {
+          "aws:SourceIp": [
+            "xxx.xxx.xxx.111",
+            "xxx.xxx.xxx.222"
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
 ### help
 
 ```sh

@@ -7,6 +7,9 @@ require 'terminal-table'
 require 'logger'
 require 'erb'
 require 'tomlrb'
+require 'json'
+require 'net/http'
+require 'uri'
 
 module Eryastic
   class CLI < Thor
@@ -38,17 +41,29 @@ module Eryastic
       eryastic.update_domain(options[:domain_name], options[:config_file]) if options[:update]
     end
 
-    # desc 'snapshot', 'Elasticsearch の Snapshot を操作する.'
-    # def snapshot
-    #   unless options[:before_datetime] then
-    #     puts '削除対象の日時がセットされていません. (--before-datetime 2017/04/01)'
-    #     exit 1
-    #   end
-    #   Eryastic = Eryastic::Snapshot.new
-    #   Eryastic.prepare_snapshot()
-    #   Eryastic.create_snapshot()
-    #   Eryastic.list_snapshot()
-    #   Eryastic.delete_snapshot()
-    # end
+    desc 'snapshot', 'Elasticsearch の Snapshot を操作する.'
+    option :prepare, type: :boolean, aliases: '-p', desc: 'Amazon Elasticsearch Service ドメインのスナップショットを作成する準備をする.'
+    option :create, type: :boolean, aliases: '-c', desc: 'Amazon Elasticsearch Service ドメインのスナップショットを作成する.'
+    option :delete, type: :boolean, aliases: '-c', desc: 'Amazon Elasticsearch Service ドメインのスナップショットを削除する.'
+    option :list, type: :boolean, aliases: '-l', desc: 'Amazon Elasticsearch Service ドメインのスナップショット一覧を取得する.'
+    option :list_repository, type: :boolean, aliases: '-y', desc: 'Amazon Elasticsearch Service ドメインのスナップリポジトリ一覧を取得する.'
+    option :restore, type: :boolean, aliases: '-r', desc: 'Amazon Elasticsearch Service ドメインのスナップリポジトリ一覧を取得する.'
+    option :bucket_name, type: :string, desc: 'Amazon Elasticsearch Service ドメインのスナップショットを保存する S3 Bucket 名を指定する.'
+    option :domain_name, type: :string, desc: 'Amazon Elasticsearch Service ドメインのスナップショットを取得するドメイン名を指定する.'
+    option :repository_name, type: :string, desc: 'Amazon Elasticsearch Service ドメインのスナップショットリポジトリ名を指定する.'
+    option :snapshot_name, type: :string, desc: 'Amazon Elasticsearch Service ドメインのスナップショット名を指定する.'
+    def snapshot
+      unless options[:prepare] or options[:create] or options[:delete] or options[:list] or options[:list_repository] or options[:restore] then
+        puts '--prepare | --create | --delete | --list | --list-repository | --restore オプションがセットされていません.'
+        exit 1
+      end
+      eryastic = Eryastic::Snapshot.new
+      eryastic.prepare_snapshot(options[:domain_name], options[:repository_name], options[:bucket_name]) if options[:prepare]
+      eryastic.create_snapshot(options[:domain_name], options[:repository_name], options[:snapshot_name]) if options[:create]
+      eryastic.delete_snapshot(options[:domain_name], options[:repository_name], options[:snapshot_name]) if options[:delete]
+      eryastic.list_snapshot(options[:domain_name], options[:repository_name]) if options[:list]
+      eryastic.list_repository(options[:domain_name]) if options[:list_repository]
+      eryastic.restore_snapshot(options[:domain_name], options[:repository_name], options[:snapshot_name]) if options[:restore]
+    end
   end
 end
