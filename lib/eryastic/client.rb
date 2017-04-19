@@ -7,9 +7,9 @@ module Eryastic
     end
 
     CLIENTS = {
-      iam_user: Aws::IAM::CurrentUser,
+      iam_client: Aws::IAM::Client,
       ess_client: Aws::ElasticsearchService::Client,
-      s3_client: Aws::S3::Client,
+      s3_client: Aws::S3::Client
     }
 
     CLIENTS.each do |method_name, client|
@@ -46,6 +46,16 @@ module Eryastic
       end
     end
 
+    def get_domain_endpoint_action(domain_name)
+      res = ess_client.describe_elasticsearch_domains({ domain_names: [ domain_name ]})
+      if res.domain_status_list.empty?
+        log.warn('指定したドメインは存在しません.')
+        exit 0
+      else
+        res.domain_status_list.last.endpoint
+      end
+    end
+
     def display_resources(header, rows)
       Terminal::Table.new :headings => header, :rows => rows
     end
@@ -65,7 +75,7 @@ module Eryastic
         end
         config.to_a.each do |va|
           if va.first == 'access_policies'.to_sym
-            resource_rows << [ va.first, JSON.pretty_generate(JSON.parse(va.last)) ]
+            resource_rows << [ va.first, JSON.pretty_generate(JSON.parse(va.last)) ] unless va.last.empty?
           else
             resource_rows << va
           end
@@ -90,10 +100,10 @@ module Eryastic
           end
         else
           if key == 'access_policies'.to_sym
-            current_policy = JSON.pretty_generate(JSON.parse(value))
-            update_policy = JSON.pretty_generate(JSON.parse(update_config[key.to_sym]))
+            current_policy = JSON.pretty_generate(JSON.parse(value)) unless value == ""
+            update_policy = JSON.pretty_generate(JSON.parse(update_config[key.to_sym])) unless update_config[key.to_sym] == ""
             if current_policy == update_policy
-              resource_rows << [ key.to_s, current_policy, update_policy]
+              resource_rows << [ key.to_s, current_policy, update_policy ]
             else
               resource_rows << [ key.to_s, current_policy, hl.color(update_policy, :red) ]
             end
@@ -103,6 +113,30 @@ module Eryastic
         end
       end
       header = [ 'key', 'current', 'update' ]
+      display_resources(header, resource_rows)
+    end
+
+    def display_snapshots(snapshots)
+      resources = JSON.parse(snapshots)
+      if resources['snapshots'].empty?
+        log.warn('指定したリポジトリのスナップショットは存在しません.')
+        exit 0
+      end
+
+      resource_rows = []
+      resources['snapshots'].each do |sn|
+        resource_rows << [ sn['snapshot'], sn['state'], sn['start_time'], sn['end_time'] ]
+      end
+      header = [ 'snapshot', 'state', 'start_time', 'end_time' ]
+      display_resources(header, resource_rows)
+    end
+
+    def display_repositories(repositories)
+      resource_rows = []
+      repositories.each  do |repo|
+        resource_rows << repo.split(' ')
+      end
+      header = [ 'repository', 'source' ]
       display_resources(header, resource_rows)
     end
 

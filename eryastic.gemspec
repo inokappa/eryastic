@@ -34,4 +34,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'awspec', '0.75.1'
   spec.add_dependency 'highline'
   spec.add_dependency 'tomlrb'
+  spec.add_dependency 'faraday_middleware'
+  spec.add_dependency 'faraday_middleware-aws-signers-v4'
 end
