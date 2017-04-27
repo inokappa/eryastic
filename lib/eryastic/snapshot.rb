@@ -44,19 +44,37 @@ module Eryastic
       end
     end
 
-    def create_snapshot(domain_name, repository_name, snapshot_name)
+    def create_snapshot(domain_name, repository_name, snapshot_name, snapshot_date = nil)
       ess_endpoint = get_domain_endpoint_action(domain_name)
       snapshot_name = snapshot_name + '_' + "#{Time.now.to_i}"
       uri  = 'https://' + ess_endpoint + '/_snapshot/' + repository_name + '/' + snapshot_name
 
       log.info('以下の内容でスナップショットを作成します.')
-      header = [ 'ess_endpoint', 'repository_name', 'snapshot_name' ]
-      resource_rows = [[ ess_endpoint, repository_name, snapshot_name ]]
+      if snapshot_date
+        indices = list_indices(domain_name)
+        snapshot_indices = indices.select { |index| index.include?(snapshot_date) }
+        if snapshot_indices.empty?
+          log.warn('スナップショット対象の index は存在しません.')
+          snapshot_month = 'スナップショット対象の index は存在しません.'
+        end
+        snapshot_indices_str = snapshot_indices.join(',')
+        body = {
+            "indices": snapshot_indices_str,
+            "ignore_unavailable": true,
+            "include_global_state": false
+        }
+        header = [ 'ess_endpoint', 'repository_name', 'snapshot_name', 'snapshot_date' ]
+        resource_rows = [[ ess_endpoint, repository_name, snapshot_name, snapshot_date ]]
+      else
+        header = [ 'ess_endpoint', 'repository_name', 'snapshot_name' ]
+        resource_rows = [[ ess_endpoint, repository_name, snapshot_name ]]
+      end
+
       puts display_resources(header, resource_rows)
 
       if process_ok?
         begin
-          res = put_request(uri)
+          res = put_request(uri, body)
         rescue StandardError => e
           log.error(e)
           exit 1
@@ -67,14 +85,22 @@ module Eryastic
 
       if res.code == '200'
         log.info('スナップショットを作成しました. message = ' + res.body + ', snapshot_name = ' + snapshot_name)
-        exit 0
+        snapshot_indices_dir = 'snapshots' + '/' +repository_name
+        FileUtils.mkdir_p(snapshot_indices_dir) unless FileTest.exist?(snapshot_indices_dir)
+        snapshot_indices_file = snapshot_indices_dir + '/' + snapshot_name
+        File.open(snapshot_indices_file, 'w') {|f| f.write snapshot_indices.join("\n")}
       else
         log.error('スナップショットの取得に失敗しました. message = ' + res.body)
         exit 1
       end
+    end
 
-      # For debug
-      # http_output(res)
+    def list_indices(domain_name)
+      ess_endpoint = get_domain_endpoint_action(domain_name)
+      uri  = 'https://' + ess_endpoint + '/_aliases?pretty'
+      res = get_request(uri)
+      indices = JSON.parse(res.body)
+      indices.keys
     end
 
     def list_snapshot(domain_name, repository_name)
@@ -146,6 +172,45 @@ module Eryastic
       else
         log.error('スナップショットからのレストアに失敗しました. message = ' + res.body)
         exit 1
+      end
+    end
+
+    def validate_snapshot(domain_name, repository_name, snapshot_name)
+      ess_endpoint = get_domain_endpoint_action(domain_name)
+      uri  = 'https://' + ess_endpoint + '/_snapshot/' + repository_name + '/' + snapshot_name
+
+      local_snapshot_file = Dir.pwd + '/snapshots/' + repository_name + '/' + snapshot_name
+      if File.exist?(local_snapshot_file)
+        log.info('以下の内容でスナップショットの検証を行います.')
+        header = [ 'ess_endpoint', 'repository_name', 'snapshot_name', 'local_snapshot_file' ]
+        resource_rows = [[ ess_endpoint, repository_name, snapshot_name, local_snapshot_file.split('/').last ]]
+        puts display_resources(header, resource_rows)
+      else
+        log.warn('検証に必要なスナップショットファイルが存在しません.')
+        exit 0
+      end
+
+      if process_ok?
+        begin
+          res = get_request(uri)
+        rescue StandardError => e
+          log.error(e)
+          exit 1
+        end
+      else
+        exit 0
+      end
+
+      remote_snapshot = JSON.parse(res.body)['snapshots'][0]['indices'].sort
+      local_snapshot = []
+      File.foreach(local_snapshot_file) do |index|
+        local_snapshot << index.chomp
+      end
+
+      if remote_snapshot == local_snapshot.sort
+        log.info(hl.color('スナップショットは正常に取得されています.', :green))
+      else
+        log.warn(hl.color('スナップショットが正常に取得されていない可能性があります.', :yellow))
       end
     end
 
@@ -275,11 +340,16 @@ EOF
       http.request(req)
     end
 
-    def put_request(uri)
+    def put_request(uri, body = nil)
       uri  = URI.parse(uri)
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl = true
-      req  = Net::HTTP::Put.new(uri.request_uri)
+      if body == nil
+        req  = Net::HTTP::Put.new(uri.request_uri)
+      else
+        req  = Net::HTTP::Put.new(uri.request_uri, 'Content-Type' => 'application/json')
+        req.body = body.to_json
+      end
       http.request(req)
     end
 

@@ -52,18 +52,22 @@ module Eryastic
     option :domain_name, type: :string, desc: 'Amazon Elasticsearch Service ドメインのスナップショットを取得するドメイン名を指定する.'
     option :repository_name, type: :string, desc: 'Amazon Elasticsearch Service ドメインのスナップショットリポジトリ名を指定する.'
     option :snapshot_name, type: :string, desc: 'Amazon Elasticsearch Service ドメインのスナップショット名を指定する.'
+    option :snapshot_date, type: :string, desc: 'Amazon Elasticsearch Service ドメインのスナップショットを取得する年月日を YYYY.MM.DD で指定する.'
+    option :validate, type: :boolean, desc: 'Amazon Elasticsearch Service ドメインのスナップショットの検証を行う.'
     def snapshot
-      unless options[:prepare] or options[:create] or options[:delete] or options[:list] or options[:list_repository] or options[:restore] then
-        puts '--prepare | --create | --delete | --list | --list-repository | --restore オプションがセットされていません.'
+      unless options[:prepare] or options[:create] or options[:delete] \
+        or options[:list] or options[:list_repository] or options[:restore] or options[:validate] then
+        puts '--prepare | --create | --delete | --list | --list-repository | --restore | --validate オプションがセットされていません.'
         exit 1
       end
       eryastic = Eryastic::Snapshot.new
       eryastic.prepare_snapshot(options[:domain_name], options[:repository_name], options[:bucket_name]) if options[:prepare]
-      eryastic.create_snapshot(options[:domain_name], options[:repository_name], options[:snapshot_name]) if options[:create]
+      eryastic.create_snapshot(options[:domain_name], options[:repository_name], options[:snapshot_name], options[:snapshot_date]) if options[:create]
       eryastic.delete_snapshot(options[:domain_name], options[:repository_name], options[:snapshot_name]) if options[:delete]
       eryastic.list_snapshot(options[:domain_name], options[:repository_name]) if options[:list]
       eryastic.list_repository(options[:domain_name]) if options[:list_repository]
       eryastic.restore_snapshot(options[:domain_name], options[:repository_name], options[:snapshot_name]) if options[:restore]
+      eryastic.validate_snapshot(options[:domain_name], options[:repository_name], options[:snapshot_name]) if options[:validate]
     end
   end
 end
