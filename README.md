@@ -275,7 +275,31 @@ $ AWS_PROFILE=xxxxx AWS_REGION=ap-northeast-1 bundle exec eryastic domain --upda
 
 - output
 
-![](./doc/images/2017041501.png)
+### snapshot
+
+#### help
+
+```sh
+bash-3.2$ bundle exec eryastic --help snapshot
+Usage:
+  eryastic snapshot
+
+Options:
+  -p, [--prepare], [--no-prepare]                  # Amazon Elasticsearch Service ドメインのスナップショットを作成する準備をする.
+  -c, [--create], [--no-create]                    # Amazon Elasticsearch Service ドメインのスナップショットを作成する.
+  -c, [--delete], [--no-delete]                    # Amazon Elasticsearch Service ドメインのスナップショットを削除する.
+  -l, [--list], [--no-list]                        # Amazon Elasticsearch Service ドメインのスナップショット一覧を取得する.
+  -y, [--list-repository], [--no-list-repository]  # Amazon Elasticsearch Service ドメインのスナップリポジトリ一覧を取得する.
+  -r, [--restore], [--no-restore]                  # Amazon Elasticsearch Service ドメインのスナップリポジトリ一覧を取得する.
+      [--bucket-name=BUCKET_NAME]                  # Amazon Elasticsearch Service ドメインのスナップショットを保存する S3 Bucket 名を指定する.
+      [--domain-name=DOMAIN_NAME]                  # Amazon Elasticsearch Service ドメインのスナップショットを取得するドメイン名を指定する.
+      [--repository-name=REPOSITORY_NAME]          # Amazon Elasticsearch Service ドメインのスナップショットリポジトリ名を指定する.
+      [--snapshot-name=SNAPSHOT_NAME]              # Amazon Elasticsearch Service ドメインのスナップショット名を指定する.
+      [--snapshot-date=SNAPSHOT_DATE]              # Amazon Elasticsearch Service ドメインのスナップショットを取得する年月日を YYYY.MM.DD で指定する.
+      [--validate], [--no-validate]                # Amazon Elasticsearch Service ドメインのスナップショットの検証を行う.
+
+Elasticsearch の Snapshot を操作する.
+```
 
 ## tips
 
