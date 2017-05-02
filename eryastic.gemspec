@@ -7,7 +7,7 @@ Gem::Specification.new do |spec|
   spec.name          = "eryastic"
   spec.version       = Eryastic::VERSION
   spec.authors       = ["Yohei Kawahara"]
-  spec.email         = ["kawahara@cloudpack.jp"]
+  spec.email         = ["inokara@gmail.com"]
 
   spec.summary       = %q{}
   spec.description   = %q{}
@@ -31,9 +31,9 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'thor'
   spec.add_dependency 'aws-sdk'
   spec.add_dependency 'terminal-table'
-  spec.add_dependency 'awspec', '0.75.1'
-  spec.add_dependency 'highline'
+  spec.add_dependency 'awspec', '0.78.1'
   spec.add_dependency 'tomlrb'
+  spec.add_dependency 'highline'
   spec.add_dependency 'faraday_middleware'
   spec.add_dependency 'faraday_middleware-aws-signers-v4'
 end
