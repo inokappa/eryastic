@@ -6,35 +6,51 @@ module Eryastic
 
     include Eryastic::Helper
 
-    def prepare_snapshot(domain_name, repository_name, bucket_name)
-      if s3_bucket_not_exists?(bucket_name)
-        create_s3_bucket_action(bucket_name)
-        log.info('S3 Bucket ' + bucket_name + ' を作成しました.')
-      else
-        log.warn('S3 Bucket は存在しています.')
-      end
-
+    def prepare_snapshot(domain_name, repository_name, bucket_name = nil)
       iam_role_name = repository_name + '-role'
       iam_policy_name = repository_name + '-policy'
-      if iam_role_not_exists?(iam_role_name)
-        iam_res = create_iam_role_action(iam_role_name)
-        create_iam_policy_action(iam_res.role.role_name, iam_policy_name, bucket_name)
-        log.info('IAM Role ' + iam_role_name + ' 及び' + iam_policy_name + ' を作成しました.')
-      else
-        log.warn('IAM Role は存在しています.')
-        iam_res = iam_role_get(iam_role_name)
-      end
-
       ess_endpoint = get_domain_endpoint_action(domain_name)
 
       log.info('以下の内容でスナップショット取得先 S3 バケット、IAM Role を作成します.')
+      header = [ 'ess_endpoint', 'iam_role_name', 'bucket_name' ]
+      resource_rows = [[ ess_endpoint, iam_role_name, bucket_name ]]
+      puts display_resources(header, resource_rows)
+
+      if process_ok?
+        exist, bucket_name = repository_not_exists?(repository_name, ess_endpoint)
+        if exist
+          log.info('リポジトリは存在していません.')
+        else
+          log.warn('リポジトリは存在しています.')
+        end
+
+        if s3_bucket_not_exists?(bucket_name)
+          create_s3_bucket_action(bucket_name)
+          log.info('S3 Bucket ' + bucket_name + ' を作成しました.')
+        else
+          log.warn('S3 Bucket は存在しています.')
+        end
+
+        if iam_role_not_exists?(iam_role_name)
+          iam_res = create_iam_role_action(iam_role_name)
+          create_iam_policy_action(iam_res.role.role_name, iam_policy_name, bucket_name)
+          log.info('IAM Role ' + iam_role_name + ' 及び' + iam_policy_name + ' を作成しました.')
+        else
+          log.warn('IAM Role は存在しています.')
+          iam_res = iam_role_get(iam_role_name)
+        end
+      else
+        exit 0
+      end
+
+      log.info('以下の内容でリポジトリを作成します.')
       header = [ 'ess_endpoint', 'repository_name', 'iam_role_name', 'bucket_name' ]
       resource_rows = [[ ess_endpoint, repository_name, iam_res.role.role_name, bucket_name ]]
       puts display_resources(header, resource_rows)
 
       if process_ok?
         begin
-          regist_snapshot_dir(ess_endpoint, repository_name, iam_res.role.arn, bucket_name)
+          regist_snapshot_repo(ess_endpoint, repository_name, iam_res.role.arn, bucket_name)
         rescue StandardError => e
           log.error(e)
           exit 1
@@ -141,7 +157,7 @@ module Eryastic
         log.info('スナップショットを削除しました. message = ' + res.body + ', snapshot_name = ' + snapshot_name)
         exit 0
       else
-        log.error('スナップショットの削除に失敗しました. message = ' + res.body)
+        log.error('スナップショットの削除に失敗しました. message = ' + res.code)
         exit 1
       end
     end
@@ -215,6 +231,17 @@ module Eryastic
     end
 
     private
+
+    def repository_not_exists?(repository_name, ess_endpoint)
+      uri  = 'https://' + ess_endpoint + '/_snapshot/' + repository_name
+      res = get_request(uri)
+      if res.code == '404'
+        return true, nil
+      else
+        repository = JSON.parse(res.body)
+        return false, repository[repository_name]['settings']['bucket']
+      end
+    end
 
     def s3_bucket_not_exists?(bucket_name)
       res = s3_client.list_buckets
@@ -336,6 +363,7 @@ EOF
       uri  = URI.parse(uri)
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl = true
+      http.read_timeout = 300
       req  = Net::HTTP::Post.new(uri.request_uri)
       http.request(req)
     end
@@ -344,6 +372,7 @@ EOF
       uri  = URI.parse(uri)
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl = true
+      http.read_timeout = 300
       if body == nil
         req  = Net::HTTP::Put.new(uri.request_uri)
       else
@@ -357,6 +386,7 @@ EOF
       uri  = URI.parse(uri)
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl = true
+      http.read_timeout = 300
       req  = Net::HTTP::Get.new(uri.request_uri)
       http.request(req)
     end
@@ -365,6 +395,7 @@ EOF
       uri  = URI.parse(uri)
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl = true
+      http.read_timeout = 300
       req  = Net::HTTP::Delete.new(uri.request_uri)
       http.request(req)
     end
@@ -377,7 +408,7 @@ EOF
       return output
     end
 
-    def regist_snapshot_dir(ess_endpoint, snapshot_name, iam_role_arn, s3_bucket_name)
+    def regist_snapshot_repo(ess_endpoint, snapshot_name, iam_role_arn, s3_bucket_name)
       template = <<-"EOT"
 {
 "settings": {
