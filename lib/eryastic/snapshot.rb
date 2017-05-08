@@ -26,9 +26,16 @@ module Eryastic
 
         if s3_bucket_not_exists?(bucket_name)
           create_s3_bucket_action(bucket_name)
-          log.info('S3 Bucket ' + bucket_name + ' を作成しました.')
+          log.info('スナップショットを保存する S3 Bucket ' + bucket_name + ' を作成しました.')
         else
-          log.warn('S3 Bucket は存在しています.')
+          log.warn('スナップショットを保存する S3 Bucket は存在しています.')
+        end
+
+        if s3_bucket_not_exists?(bucket_name + '-state')
+          create_s3_bucket_action(bucket_name + '-state')
+          log.info('スナップショットの状態を保存する S3 Bucket ' + bucket_name + '-state を作成しました.')
+        else
+          log.warn('スナップショットの状態を保存する S3 Bucket は存在しています.')
         end
 
         if iam_role_not_exists?(iam_role_name)
@@ -62,6 +69,7 @@ module Eryastic
 
     def create_snapshot(domain_name, repository_name, snapshot_name, snapshot_date = nil)
       ess_endpoint = get_domain_endpoint_action(domain_name)
+      exist, bucket_name = repository_not_exists?(repository_name, ess_endpoint)
       snapshot_name = snapshot_name + '_' + "#{Time.now.to_i}"
       uri  = 'https://' + ess_endpoint + '/_snapshot/' + repository_name + '/' + snapshot_name
 
@@ -101,10 +109,11 @@ module Eryastic
 
       if res.code == '200'
         log.info('スナップショットを作成しました. message = ' + res.body + ', snapshot_name = ' + snapshot_name)
-        snapshot_indices_dir = 'snapshots' + '/' +repository_name
-        FileUtils.mkdir_p(snapshot_indices_dir) unless FileTest.exist?(snapshot_indices_dir)
-        snapshot_indices_file = snapshot_indices_dir + '/' + snapshot_name
-        File.open(snapshot_indices_file, 'w') {|f| f.write snapshot_indices.join("\n")}
+        state_bucket = bucket_name + '-state'
+        key = 'snapshots' + '/' + repository_name + '/' + snapshot_name
+        object = snapshot_indices.join("\n")
+        log.info('s3://' + state_bucket + '/' + key + ' に取得した index スナップショットの一覧を保存します.')
+        put_s3_object_action(state_bucket, key, object)
       else
         log.error('スナップショットの取得に失敗しました. message = ' + res.body)
         exit 1
@@ -194,17 +203,16 @@ module Eryastic
     def validate_snapshot(domain_name, repository_name, snapshot_name)
       ess_endpoint = get_domain_endpoint_action(domain_name)
       uri  = 'https://' + ess_endpoint + '/_snapshot/' + repository_name + '/' + snapshot_name
+      exist, snapshot_bucket_name = repository_not_exists?(repository_name, ess_endpoint)
 
-      local_snapshot_file = Dir.pwd + '/snapshots/' + repository_name + '/' + snapshot_name
-      if File.exist?(local_snapshot_file)
-        log.info('以下の内容でスナップショットの検証を行います.')
-        header = [ 'ess_endpoint', 'repository_name', 'snapshot_name', 'local_snapshot_file' ]
-        resource_rows = [[ ess_endpoint, repository_name, snapshot_name, local_snapshot_file.split('/').last ]]
-        puts display_resources(header, resource_rows)
-      else
-        log.warn('検証に必要なスナップショットファイルが存在しません.')
-        exit 0
-      end
+      state_bucket_name = snapshot_bucket_name + '-state'
+      key_name = 'snapshots/' + repository_name + '/' + snapshot_name
+      snapshot_state = get_s3_object_action(state_bucket_name, key_name)
+
+      log.info('以下の内容でスナップショットの検証を行います.')
+      header = [ 'ess_endpoint', 'repository_name', 'snapshot_name' ]
+      resource_rows = [[ ess_endpoint, repository_name, snapshot_name ]]
+      puts display_resources(header, resource_rows)
 
       if process_ok?
         begin
@@ -217,13 +225,14 @@ module Eryastic
         exit 0
       end
 
-      remote_snapshot = JSON.parse(res.body)['snapshots'][0]['indices'].sort
-      local_snapshot = []
-      File.foreach(local_snapshot_file) do |index|
-        local_snapshot << index.chomp
+      begin
+        remote_snapshot = JSON.parse(res.body)['snapshots'][0]['indices'].sort
+      rescue StandardError => e
+        log.error('処理が失敗しました. ' + e.to_s)
+        exit 1
       end
 
-      if remote_snapshot == local_snapshot.sort
+      if remote_snapshot == snapshot_state.read.split("\n").sort
         log.info(hl.color('スナップショットは正常に取得されています.', :green))
       else
         log.warn(hl.color('スナップショットが正常に取得されていない可能性があります.', :yellow))
@@ -260,7 +269,32 @@ module Eryastic
         })
         res
       rescue StandardError => e
-        log.error('処理が失敗しました.' + e.to_s)
+        log.error('処理が失敗しました. message = ' + e.to_s)
+      end
+    end
+
+    def put_s3_object_action(bucket_name, key_name, object)
+      begin
+        res = s3_client.put_object({
+          bucket: bucket_name,
+          key: key_name,
+          body: object
+        })
+        res
+      rescue StandardError => e
+        log.error('処理が失敗しました. message = ' + e.to_s)
+      end
+    end
+
+    def get_s3_object_action(bucket_name, key_name)
+      begin
+        res = s3_client.get_object({
+          bucket: bucket_name,
+          key: key_name
+        })
+        res.body
+      rescue StandardError => e
+        log.error('処理が失敗しました. message = ' + e.to_s)
       end
     end
 
@@ -279,7 +313,7 @@ module Eryastic
         res = iam_client.get_role({ role_name: role_name })
         res
       rescue StandardError => e
-        log.error('処理が失敗しました.' + e.to_s)
+        log.error('処理が失敗しました. message = ' + e.to_s)
         exit 0
       end
     end
@@ -308,7 +342,7 @@ EOF
         })
         res
       rescue StandardError => e
-        log.error('処理が失敗しました.' + e.to_s)
+        log.error('処理が失敗しました. message = ' + e.to_s)
       end
     end
 
@@ -349,7 +383,7 @@ EOF
         })
         res
       rescue StandardError => e
-        log.error('処理が失敗しました.' + e.to_s)
+        log.error('処理が失敗しました. message = ' + e.to_s)
       end
     end
 
