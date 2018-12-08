@@ -83,9 +83,9 @@ module Eryastic
         end
         snapshot_indices_str = snapshot_indices.join(',')
         body = {
-            "indices": snapshot_indices_str,
-            "ignore_unavailable": true,
-            "include_global_state": false
+          'indices' => snapshot_indices_str,
+          'ignore_unavailable' => true,
+          'include_global_state' => false
         }
         header = [ 'ess_endpoint', 'repository_name', 'snapshot_name', 'snapshot_date' ]
         resource_rows = [[ ess_endpoint, repository_name, snapshot_name, snapshot_date ]]
@@ -479,3 +479,4 @@ EOT
     end
   end
 end
+
