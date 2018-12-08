@@ -17,11 +17,11 @@ module Eryastic
       puts display_resources(header, resource_rows)
 
       if process_ok?
-        exist, bucket_name = repository_not_exists?(repository_name, ess_endpoint)
+        exist, repo_bucket_name = repository_not_exists?(repository_name, ess_endpoint)
         if exist
           log.info('リポジトリは存在していません.')
         else
-          log.warn('リポジトリは存在しています.')
+          log.warn('リポジトリは存在しています. S3 Bucket は ' + repo_bucket_name + 'です.')
         end
 
         if s3_bucket_not_exists?(bucket_name)
@@ -83,9 +83,9 @@ module Eryastic
         end
         snapshot_indices_str = snapshot_indices.join(',')
         body = {
-            "indices": snapshot_indices_str,
-            "ignore_unavailable": true,
-            "include_global_state": false
+          'indices' => snapshot_indices_str,
+          'ignore_unavailable' => true,
+          'include_global_state' => false
         }
         header = [ 'ess_endpoint', 'repository_name', 'snapshot_name', 'snapshot_date' ]
         resource_rows = [[ ess_endpoint, repository_name, snapshot_name, snapshot_date ]]
@@ -479,3 +479,4 @@ EOT
     end
   end
 end
+
