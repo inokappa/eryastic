@@ -17,11 +17,11 @@ module Eryastic
       puts display_resources(header, resource_rows)
 
       if process_ok?
-        exist, bucket_name = repository_not_exists?(repository_name, ess_endpoint)
+        exist, repo_bucket_name = repository_not_exists?(repository_name, ess_endpoint)
         if exist
           log.info('リポジトリは存在していません.')
         else
-          log.warn('リポジトリは存在しています.')
+          log.warn('リポジトリは存在しています. S3 Bucket は ' + repo_bucket_name + 'です.')
         end
 
         if s3_bucket_not_exists?(bucket_name)
